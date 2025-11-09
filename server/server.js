@@ -301,26 +301,27 @@ app.post(`/sell/:sellerId/:nftId`, async (req, res)=>
 {
   try {
     const seller = await User.findById(req.params.sellerId);
-    const nft = await seller.nfts.created.find(n=>n._id === req.params.nftId);
-    if (nft) {
-      const marketplace = await User.findById(MARKETPLACE_ID);
-
-      if(!nft.createdBy)
-      {
-        nft.createdBy = 
-        {
-          _id: seller._id,
-          avatarUrl: seller.avatarUrl,
-          username: seller.username,
-        }
-      }
-      
-      nft.isSelling = true;
-      marketplace.nfts.created.push(nft);
-
-      await seller.save();
-      await marketplace.save()
+    const nft = await seller.nfts.created.find(n=>n._id.toString() === req.params.nftId);
+    if (!nft) {
+      return res.status(404).json({ error: 'NFT not found' });
     }
+    const marketplace = await User.findById(MARKETPLACE_ID);
+
+    if (!nft.createdBy) {
+      nft.createdBy = {
+        _id: seller._id,
+        avatarUrl: seller.avatarUrl,
+        username: seller.username,
+      };
+    }
+
+    nft.isSelling = true;
+
+    marketplace.nfts.created.push(nft);
+    await seller.save();
+    await marketplace.save();
+
+    return res.status(200).json({ message: 'NFT successfully added to marketplace' });
   } catch (error) {
     res.status(500).json({error: err.message})
   }
