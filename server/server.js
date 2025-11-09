@@ -29,6 +29,7 @@ const userSchema = new mongoose.Schema(
         followings: [{_id: String, username: String, avatarUrl: String}],
         avatarUrl: {type: String, default: '/images/avatar1.png'},
         bannerUrl: {type: String, default: '/images/banner1.png'},
+        createdBy: {_id: String, username: String, avatarUrl: String},
         stats:
         {
             volume: { type: Number, default: 0 },
