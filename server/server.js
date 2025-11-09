@@ -29,7 +29,6 @@ const userSchema = new mongoose.Schema(
         followings: [{_id: String, username: String, avatarUrl: String}],
         avatarUrl: {type: String, default: '/images/avatar1.png'},
         bannerUrl: {type: String, default: '/images/banner1.png'},
-        createdBy: {_id: String, username: String, avatarUrl: String},
         stats:
         {
             volume: { type: Number, default: 0 },
@@ -44,6 +43,8 @@ const userSchema = new mongoose.Schema(
                   price: String,
                   highestBid: String,
                   imageUrl: String,
+                  createdBy: {_id: String, username: String, avatarUrl: String},
+                  isSelling: { type: Boolean, default: false },
               }
             ],
             default: []
@@ -144,7 +145,12 @@ app.post('/artist-page/:id/nfts', async (req, res) => {
       if (!user) return res.status(404).json({ error: 'User not found' })
   
       const { title, price, highestBid, imageUrl } = req.body
-      const newNFT = { title, price, highestBid, imageUrl }
+      const newNFT = { title, price, highestBid, imageUrl, createdBy: 
+        {
+          _id: user._id,
+          avatarUrl: user.avatarUrl,
+          username: user.username,
+        } }
   
       user.nfts.created.push(newNFT)
       await user.save()
@@ -289,6 +295,35 @@ app.post('/buy/:selledId/:buyerId/:nftId', async (req, res)=>
     } catch (err) {
         res.status(500).json({error: err.message})
     }
+})
+
+app.post(`/sell/:sellerId/:nftId`, async (req, res)=>
+{
+  try {
+    const seller = await User.findById(req.params.sellerId);
+    const nft = await seller.nfts.created.find(n=>n._id === req.params.nftId);
+    if (nft) {
+      const marketplace = await User.findById(MARKETPLACE_ID);
+
+      if(!nft.createdBy)
+      {
+        nft.createdBy = 
+        {
+          _id: seller._id,
+          avatarUrl: seller.avatarUrl,
+          username: seller.username,
+        }
+      }
+      
+      nft.isSelling = true;
+      marketplace.nfts.created.push(nft);
+
+      await seller.save();
+      await marketplace.save()
+    }
+  } catch (error) {
+    res.status(500).json({error: err.message})
+  }
 })
 
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on ${API_URL}:${PORT}`))
