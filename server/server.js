@@ -317,12 +317,13 @@ app.post(`/sell/:sellerId/:nftId`, async (req, res)=>
 
     nft.isSelling = true;
 
-    marketplace.nfts.created.push(nft);
+    marketplace.nfts.created.push(nft.toObject());
+    
     await seller.save();
     await marketplace.save();
 
     return res.status(200).json({ message: 'NFT successfully added to marketplace' });
-  } catch (error) {
+  } catch (err) {
     res.status(500).json({error: err.message})
   }
 })
