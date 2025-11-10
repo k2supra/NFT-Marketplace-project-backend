@@ -18,62 +18,96 @@ app.use(cors())
 app.use(express.json())
 app.use('/images', express.static('public/images'))
 
-const userSchema = new mongoose.Schema(
-    {
-        username: String,
-        email: String,
-        password: String,
-        bio: { type: String, default: '' },
-        balance: { type: Number, default: 999 },
-        followers: [{_id: String, username: String, avatarUrl: String}],
-        followings: [{_id: String, username: String, avatarUrl: String}],
-        avatarUrl: {type: String, default: '/images/avatar1.png'},
-        bannerUrl: {type: String, default: '/images/banner1.png'},
-        stats:
-        {
-            volume: { type: Number, default: 0 },
-            sold: { type: Number, default: 0 },
-        },
-        nfts:
-        {
-          created:{
-            type:[
-              {
-                  title: String,
-                  price: String,
-                  highestBid: String,
-                  imageUrl: String,
-                  createdBy: {_id: String, username: String, avatarUrl: String},
-                  isSelling: { type: Boolean, default: false },
-              }
-            ],
-            default: []
-          },
-          owned:{
-            type:[
-              {
-                  title: String,
-                  price: String,
-                  highestBid: String,
-                  imageUrl: String,
-              }
-            ],
-            default: []
-          },
-          collections:{
-            type:[
-              {
-                  title: String,
-                  price: String,
-                  highestBid: String,
-                  imageUrl: String,
-              }
-            ],
-            default: []
-          },
-        }
-    }
-)
+
+const nftSchema = new mongoose.Schema({
+  title: String,
+  price: String,
+  highestBid: String,
+  imageUrl: String,
+  createdBy: {
+    _id: { type: String },
+    username: { type: String },
+    avatarUrl: { type: String }
+  },
+  isSelling: { type: Boolean, default: false },
+}, { _id: true });
+
+// const userSchema = new mongoose.Schema(
+//     {
+//         username: String,
+//         email: String,
+//         password: String,
+//         bio: { type: String, default: '' },
+//         balance: { type: Number, default: 999 },
+//         followers: [{_id: String, username: String, avatarUrl: String}],
+//         followings: [{_id: String, username: String, avatarUrl: String}],
+//         avatarUrl: {type: String, default: '/images/avatar1.png'},
+//         bannerUrl: {type: String, default: '/images/banner1.png'},
+//         stats:
+//         {
+//             volume: { type: Number, default: 0 },
+//             sold: { type: Number, default: 0 },
+//         },
+//         nfts:
+//         {
+//           created:{
+//             type:[
+//               {
+//                   title: String,
+//                   price: String,
+//                   highestBid: String,
+//                   imageUrl: String,
+//                   createdBy: {_id: String, username: String, avatarUrl: String},
+//                   isSelling: { type: Boolean, default: false },
+//               }
+//             ],
+//             default: []
+//           },
+//           owned:{
+//             type:[
+//               {
+//                   title: String,
+//                   price: String,
+//                   highestBid: String,
+//                   imageUrl: String,
+//               }
+//             ],
+//             default: []
+//           },
+//           collections:{
+//             type:[
+//               {
+//                   title: String,
+//                   price: String,
+//                   highestBid: String,
+//                   imageUrl: String,
+//               }
+//             ],
+//             default: []
+//           },
+//         }
+//     }
+// )
+const userSchema = new mongoose.Schema({
+  username: String,
+  email: String,
+  password: String,
+  bio: { type: String, default: '' },
+  balance: { type: Number, default: 999 },
+  followers: [{ _id: String, username: String, avatarUrl: String }],
+  followings: [{ _id: String, username: String, avatarUrl: String }],
+  avatarUrl: { type: String, default: '/images/avatar1.png' },
+  bannerUrl: { type: String, default: '/images/banner1.png' },
+  stats: {
+    volume: { type: Number, default: 0 },
+    sold: { type: Number, default: 0 },
+  },
+  nfts: {
+    created: { type: [nftSchema], default: [] },
+    owned:   { type: [nftSchema], default: [] },
+    collections: { type: [nftSchema], default: [] },
+  }
+});
 
 const User = mongoose.model('User', userSchema)
 
@@ -297,19 +331,35 @@ app.post('/buy/:selledId/:buyerId/:nftId', async (req, res)=>
     }
 })
 
-app.post(`/sell/:sellerId/:nftId`, async (req, res)=>
-{
+app.post('/sell/:sellerId/:nftId', async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
-    const seller = await User.findById(req.params.sellerId);
-    const nft = await seller.nfts.created.find(n=>n._id.toString() === req.params.nftId);
-    if (!nft) {
-      return res.status(404).json({ error: 'NFT not found' });
+    const { sellerId, nftId } = req.params;
+    const seller = await User.findById(sellerId).session(session);
+    if (!seller) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ error: 'Seller not found' });
     }
-    const marketplace = await User.findById(MARKETPLACE_ID);
 
-    if (!nft.createdBy) {
+    const nft = seller.nfts.created.find(n => n._id.toString() === nftId);
+    if (!nft) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ error: 'NFT not found in seller created list' });
+    }
+
+    const marketplace = await User.findById(MARKETPLACE_ID).session(session);
+    if (!marketplace) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ error: 'Marketplace user not found' });
+    }
+
+    if (!nft.createdBy || !nft.createdBy._id) {
       nft.createdBy = {
-        _id: seller._id,
+        _id: seller._id.toString(),
         avatarUrl: seller.avatarUrl,
         username: seller.username,
       };
@@ -317,18 +367,28 @@ app.post(`/sell/:sellerId/:nftId`, async (req, res)=>
 
     nft.isSelling = true;
 
-    marketplace.nfts.created.push({...nft});
+    seller.markModified('nfts');
 
-    console.log(`///////////////////////\n${nft}`);
-    
+    const nftCopy = nft.toObject ? nft.toObject() : JSON.parse(JSON.stringify(nft));
 
-    await seller.save();
-    await marketplace.save();
+    marketplace.nfts.created.push(nftCopy);
+    marketplace.markModified('nfts');
 
-    return res.status(200).json({ message: 'NFT successfully added to marketplace' });
+    await seller.save({ session });
+    await marketplace.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(200).json({ message: 'NFT successfully added to marketplace', nft: nftCopy });
   } catch (err) {
-    res.status(500).json({error: err.message})
+    try {
+      await session.abortTransaction();
+      session.endSession();
+    } catch (e) { /* ignore */ }
+    console.error('Sell endpoint error:', err);
+    return res.status(500).json({ error: err.message });
   }
-})
+});
 
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on ${API_URL}:${PORT}`))
