@@ -317,8 +317,8 @@ app.post(`/sell/:sellerId/:nftId`, async (req, res)=>
 
     nft.isSelling = true;
 
-    marketplace.nfts.created.push(nft.toObject());
-    
+    marketplace.nfts.created.push({...nft});
+
     await seller.save();
     await marketplace.save();
 
