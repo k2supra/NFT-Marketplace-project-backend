@@ -319,7 +319,9 @@ app.post(`/sell/:sellerId/:nftId`, async (req, res)=>
 
     marketplace.nfts.created.push({...nft});
 
-    await nft.save()
+    console.log(`///////////////////////\n${nft}`);
+    
+
     await seller.save();
     await marketplace.save();
 
