@@ -339,7 +339,9 @@ app.post('/buy/:sellerId/:buyerId/:nftId', async (req, res)=>
         const realPrice = (100/101) * +boughtNft.price;
         const interest = +boughtNft.price - realPrice;
         currentOwner.balance += realPrice;
-        seller.balance = interest;
+        currentOwner.nfts.created = currentOwner.nfts.created.filter(nft=>nft._id.toString()!==boughtNft._id.toString());
+        currentOwner.nfts.owned = currentOwner.nfts.owned.filter(nft=>nft._id.toString()!==boughtNft._id.toString());
+        seller.balance += interest;
         buyer.balance -= +boughtNft.price;
       }
 
