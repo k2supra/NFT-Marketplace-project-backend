@@ -30,6 +30,11 @@ const nftSchema = new mongoose.Schema({
     avatarUrl: { type: String }
   },
   isSelling: { type: Boolean, default: false },
+  currentOwner:{
+    _id: { type: String },
+    username: { type: String },
+    avatarUrl: { type: String }
+  }
 }, { _id: true });
 
 // const userSchema = new mongoose.Schema(
@@ -305,26 +310,50 @@ app.get('/fetch-marketplace-for-sale', async (req, res)=>
         res.status(500).json({error: err.message})
     }
 })
-app.post('/buy/:selledId/:buyerId/:nftId', async (req, res)=>
+app.post('/buy/:sellerId/:buyerId/:nftId', async (req, res)=>
 {
     try {
-      const seller = await User.findById(req.params.selledId).select('balance nfts stats');
+      const seller = await User.findById(req.params.sellerId).select('balance nfts stats');
       const buyer = await User.findById(req.params.buyerId).select('balance nfts');
 
       const boughtNft = seller.nfts.created.find(nft=>nft._id.toString()===req.params.nftId);
       if (!boughtNft) return res.status(404).json({error: 'NFT not found'});
 
+      let currentOwner = null;
+
+      if(boughtNft?.currentOwner?._id)
+      {
+        currentOwner = await User.findById(boughtNft.currentOwner._id).select('balance nfts stats')
+      }
+
       seller.nfts.created = seller.nfts.created.filter(nft=>nft._id.toString()!==req.params.nftId);
       buyer.nfts.owned.push(boughtNft);
 
-      seller.balance += +boughtNft.price;
-      buyer.balance -= +boughtNft.price;
+      if(boughtNft?.currentOwner?._id.toString() === MARKETPLACE_ID)
+      {
+        seller.balance += +boughtNft.price;
+        buyer.balance -= +boughtNft.price;
+      }
+      else
+      {
+        const realPrice = (100/101) * +boughtNft.price;
+        const interest = +boughtNft.price - realPrice;
+        currentOwner.balance += realPrice;
+        seller.balance = interest;
+        buyer.balance -= +boughtNft.price;
+      }
+
+      // seller.balance += +boughtNft.price;
+      // buyer.balance -= +boughtNft.price;
 
       seller.stats.volume += +boughtNft.price;
       seller.stats.sold += 1;
 
       await seller.save();
       await buyer.save();
+      if (currentOwner) {
+        await currentOwner.save();
+      }
       res.json({message: 'Purchase successful', nft: boughtNft});
     } catch (err) {
         res.status(500).json({error: err.message})
@@ -357,8 +386,19 @@ app.post('/sell/:sellerId/:nftId', async (req, res) => {
       return res.status(404).json({ error: 'Marketplace user not found' });
     }
 
+    if (sellerId !== MARKETPLACE_ID) {
+      nft.price += nft.price * 1 / 100;
+    }
+
     if (!nft.createdBy || !nft.createdBy._id) {
       nft.createdBy = {
+        _id: seller._id.toString(),
+        avatarUrl: seller.avatarUrl,
+        username: seller.username,
+      };
+    }
+    if (!nft.currentOwner || !nft.currentOwner._id) {
+      nft.currentOwner = {
         _id: seller._id.toString(),
         avatarUrl: seller.avatarUrl,
         username: seller.username,
