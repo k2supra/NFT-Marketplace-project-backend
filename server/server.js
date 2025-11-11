@@ -389,7 +389,7 @@ app.post('/sell/:sellerId/:nftId', async (req, res) => {
     }
 
     if (sellerId !== MARKETPLACE_ID) {
-      nft.price += nft.price * 1 / 100;
+      nft.price = +nft.price + (+nft.price * 1 / 100);
     }
 
     if (!nft.createdBy || !nft.createdBy._id) {
